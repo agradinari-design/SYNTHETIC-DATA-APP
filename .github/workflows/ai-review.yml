@@ -1,0 +1,95 @@
+name: AI Review
+
+on:
+  pull_request:
+    branches: [prompt, rag, agentic]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    outputs:
+      grade: ${{ steps.evaluator.outputs.grade }}
+      summary: ${{ steps.evaluator.outputs.summary }}
+
+    steps:
+      - name: Checkout (merge of PR HEAD into base)
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: .github/scripts/requirements.txt
+
+      - name: Install evaluator dependencies
+        run: pip install -r .github/scripts/requirements.txt
+
+      - name: Run AI evaluation
+        id: evaluator
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TARGET_BRANCH: ${{ github.base_ref }}
+        run: python .github/scripts/evaluate.py
+
+      - name: Post / update PR review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- ai-review-bot -->"
+          { echo "$MARKER"; echo; cat review_comment.md; } > comment_body.md
+          existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1 || true)
+          payload=$(jq -n --rawfile body comment_body.md '{body: $body}')
+          if [ -n "$existing" ]; then
+            echo "Updating existing comment $existing"
+            echo "$payload" | gh api "repos/$REPO/issues/comments/$existing" \
+              -X PATCH --input -
+          else
+            echo "Creating new comment"
+            echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" \
+              -X POST --input -
+          fi
+
+      - name: Notify instructor via Slack
+        if: ${{ steps.evaluator.outputs.grade == 'passed' || steps.evaluator.outputs.grade == 'passed_with_notes' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          GRADE: ${{ steps.evaluator.outputs.grade }}
+          SUMMARY: ${{ steps.evaluator.outputs.summary }}
+          ACTOR: ${{ github.actor }}
+          MODULE: ${{ github.base_ref }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+            echo "SLACK_WEBHOOK_URL not configured — skipping Slack notification."
+            exit 0
+          fi
+          icon=":large_green_circle:"
+          if [ "$GRADE" = "passed_with_notes" ]; then icon=":large_yellow_circle:"; fi
+          text=":mortar_board: ${icon} *${ACTOR}* completed the *${MODULE}* module — verdict: \`${GRADE}\`
+> ${SUMMARY}
+<${PR_URL}|Open the PR for final review>"
+          jq -n --arg text "$text" '{text: $text}' \
+            | curl -sSf -X POST -H 'Content-Type: application/json' \
+                --data @- "$SLACK_WEBHOOK_URL"
+
+      - name: Fail the check if verdict is `failed`
+        if: ${{ steps.evaluator.outputs.grade == 'failed' }}
+        run: |
+          echo "::error::AI verdict: failed. See PR comment for details."
+          exit 1
