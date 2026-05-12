@@ -63,7 +63,7 @@ class ReviewResult(BaseModel):
     technical_requirements: list[RequirementAnalysis]
     phase_analysis: list[PhaseAnalysis]
     action_items_for_student: list[str]
-    instructor_summary: str
+    professor_summary: str
 
 
 def collect_code(root: Path) -> tuple[str, list[str]]:
@@ -243,7 +243,7 @@ def fallback_empty_submission(branch: str) -> ReviewResult:
             "Add your project's source files on top of this branch and push again.",
             f"Make sure your PR targets the `{branch}` branch.",
         ],
-        instructor_summary="Empty submission — no reviewable source files.",
+        professor_summary="Empty submission — no reviewable source files.",
     )
 
 
@@ -298,10 +298,9 @@ def main() -> int:
     print(f"Wrote review to {COMMENT_PATH}")
 
     emit_output("grade", result.grade)
-    emit_output("summary", result.instructor_summary)
 
     print(f"\nGrade: {result.grade}")
-    print(f"Summary: {result.instructor_summary}")
+    print(f"Summary: {result.professor_summary}")
     return 0
 
 

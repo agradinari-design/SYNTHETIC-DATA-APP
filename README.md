@@ -11,7 +11,7 @@ This branch is the **target** of your submission Pull Request for Module 1. Bran
 
 You will implement a conversational AI application with two primary functionalities: **synthetic data generation** and **natural-language data querying** ("Talk to your data"). The work is broken down into phases — the first two are mandatory, the third is optional.
 
-By the end of the project, you must deliver a working UI and present both the results and the source code to your instructor.
+By the end of the project, you must deliver a working UI and present both the results and the source code to your professor.
 
 ---
 
@@ -129,7 +129,7 @@ You may use any of these (or your own) for testing. A reference UI mock-up is pr
 
 ## How to submit
 
-1. Branch off `prompt`: `git checkout prompt && git checkout -b <your-name>/prompt-submission`.
+1. Branch off `prompt`: `git checkout prompt && git checkout -b <user-ldap-id>/prompt-submission`.
 2. Build your project on that branch. The reviewer will read **everything you commit** (excluding `.github/`, caches, and binary assets).
 3. Open a Pull Request targeting the `prompt` branch.
 4. The AI reviewer runs automatically. A single PR comment summarises the verdict, the technical requirements check, and a per-phase analysis with action items.
