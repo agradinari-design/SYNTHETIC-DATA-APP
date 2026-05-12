@@ -29,9 +29,10 @@ MAX_FILE_BYTES = 60_000
 MAX_TOTAL_BYTES = 800_000
 
 EXCLUDED_DIRS = {
-    ".git", ".github", "node_modules", "__pycache__", ".venv", "venv",
-    ".pytest_cache", ".ipynb_checkpoints", ".mypy_cache", ".ruff_cache",
-    "dist", "build", ".next", ".cache", ".terraform", ".idea", ".vscode",
+    ".git", ".github", "resources", "node_modules", "__pycache__",
+    ".venv", "venv", ".pytest_cache", ".ipynb_checkpoints", ".mypy_cache",
+    ".ruff_cache", "dist", "build", ".next", ".cache", ".terraform",
+    ".idea", ".vscode",
 }
 EXCLUDED_SUFFIXES = {
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".pdf", ".zip", ".tar", ".gz",
