@@ -139,13 +139,20 @@ jobs:
       - name: Checkout (merge of PR HEAD into base)
         uses: actions/checkout@v4
 
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Run Gemini review
         id: gemini
         env:
           GEMINI_CLI_TRUST_WORKSPACE: "true"
         uses: google-github-actions/run-gemini-cli@v0.1.22
         with:
-          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          use_vertex_ai: true
+          gcp_project_id: ${{ secrets.GCP_PROJECT_ID }}
+          gcp_location: us-central1
           gemini_model: gemini-3.1-pro-preview
           prompt: ${{ env.REVIEW_PROMPT }}
 
