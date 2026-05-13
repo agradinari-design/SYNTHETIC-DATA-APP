@@ -3,7 +3,9 @@
 > Grid University · Gen AI Training Program
 > Modules covered: Prompt Engineering, LLM APIs, Guardrails, Basic Observability, Production best practices.
 
-This branch is the **target** of your submission Pull Request for Module 1. Branch off this branch, build your project, then open a PR back into `prompt`. An AI reviewer will analyze your work phase-by-phase and post detailed feedback as a PR comment. For the full submission flow, see the [`main` branch README](https://github.com/griddynamics/gridu-genai/blob/main/README.md).
+This branch is the **target** of your submission Pull Request for Module 1. Branch off this branch, build your project, then open a PR back into `prompt`. Two AI reviewers — Claude and Gemini — run in parallel on every PR and each posts a detailed sticky comment with the verdict, phase-by-phase analysis, and concrete action items. For the full submission flow, see the [`main` branch README](https://github.com/griddynamics/gridu-genai/blob/main/README.md).
+
+> ⚠️ **Heads-up:** the Pull Request you will open targets this branch but **will never be merged.** The `prompt` branch is an evaluation target only. Your professor reads your code and the AI reviews on the PR thread, then closes the PR. No code from any submission ever lands on `prompt`.
 
 ---
 
@@ -132,7 +134,8 @@ You may use any of these (or your own) for testing. A reference UI mock-up is pr
 1. Branch off `prompt`: `git checkout prompt && git checkout -b <user-ldap-id>/prompt-submission`.
 2. Build your project on that branch. The reviewer will read **everything you commit** (excluding `.github/`, caches, and binary assets).
 3. Open a Pull Request targeting the `prompt` branch.
-4. The AI reviewer runs automatically. A single PR comment summarises the verdict, the technical requirements check, and a per-phase analysis with action items.
-5. Push more commits to re-trigger the review. The bot updates its existing comment in place.
+4. Two AI reviewers (Claude + Gemini) run automatically and each posts a sticky PR comment with verdict, technical-requirements table, per-phase analysis, and action items.
+5. Push more commits to re-trigger the reviewers. Each bot updates its existing comment in place.
+6. When you reach `passed` / `passed_with_notes` on both, request final review from your professor.
 
 Good luck — and have fun.

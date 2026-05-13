@@ -9,62 +9,171 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  id-token: write
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    outputs:
-      grade: ${{ steps.evaluator.outputs.grade }}
+env:
+  REVIEW_PROMPT: |
+    You are a senior AI mentor reviewing a student's capstone project for Grid University's Gen AI training program. This Pull Request targets the **${{ github.base_ref }}** module branch.
 
+    # Context — read this first
+
+    **This Pull Request will never be merged.** The module branches (`prompt`, `rag`, `agentic`) exist solely as targets for evaluation PRs. The professor uses the PR thread to read your code and the review you produce, then closes the PR without merging. Do not suggest "merge once green" or "after this is merged" anywhere in your output — there is no merge.
+
+    Your job is to produce thorough, pedagogical feedback that helps the student understand what they delivered, what gaps remain, and how to close them.
+
+    # How to evaluate
+
+    1. **Read the rubric** at `.github/rubrics/${{ github.base_ref }}.md`. It contains the original task specification (the source of truth for what the student had to deliver) and the grading guidance you must apply. Read the entire file.
+
+    2. **Read the student's code.** Walk the repository (everything except `.github/` and `resources/`, which contain reviewer infrastructure and course-provided materials respectively). Use your file-read tools — do not guess; actually open the files. Note: the orphan base branch is empty, so the merged checkout contains only the student's contribution plus the reviewer infrastructure.
+
+    3. **Apply the philosophy in the rubric.** The core principle is:
+       - **Substitution = OK** (mark `substituted`, note what was used). Do not penalize when the student fills the same role with an equivalent tool.
+       - **Omission = NOT OK** (mark `missing`). When a non-optional capability is absent and nothing fills the role, that's a real gap.
+       - Items labeled `(Optional)`, `(optional for interns)`, `[Optional]`, etc. NEVER lower the verdict. Do not flag them.
+
+    4. **Evidence standard.** A package in `requirements.txt`, a filename that mentions a library, or a README claim is NOT evidence of implementation. Real evidence is an `import` statement in non-test source code AND a call site that runs as part of the application. If you can only find stubs / `# TODO` / placeholders, treat the capability as **missing**, not present. Always cite file paths (and line numbers when you can see them) for both present and missing items.
+
+    # Verdict rules
+
+    - `failed` — the course's primary framework is absent (e.g., ADK for agentic, LangChain for rag, Vertex AI / Google GenAI SDK for prompt engineering), OR any mandatory Phase is entirely missing, OR two or more explicit singleton requirements are missing without substitution, OR there are no reviewable artefacts.
+    - `passed_with_notes` — at least one substitution OR one isolated missing non-Phase singleton; everything else delivered end-to-end.
+    - `passed` — every mandatory item is verified present. Rare; when in doubt, downgrade to `passed_with_notes`.
+
+    # Output format
+
+    Produce a single markdown review with these sections, in this exact order:
+
+    1. **Verdict** — one line, in the form: `**Verdict:** ✅ PASSED` / `🟡 PASSED WITH NOTES` / `❌ FAILED`.
+
+    2. **Overall assessment** — a 2–3 sentence narrative naming the biggest strength and the biggest gap.
+
+    3. **Technical requirements** — a markdown table with one row per mandatory singleton from the rubric:
+
+       ```
+       | Requirement | Status | Evidence |
+       |---|---|---|
+       | … | ✓ present / ~ substituted / ✗ missing | file:line — short note |
+       ```
+
+    4. **Phase-by-phase analysis** — one subsection per mandatory phase using `### ✓/~/✗ Phase X — name` as the heading. Each subsection has:
+       - **What I found** — what the student delivered, with file references.
+       - **Gaps** — bulleted list, one bullet per missing sub-item.
+       - **Suggestions** — concrete, actionable next steps.
+
+    5. **Action items** — a markdown checklist (`- [ ] …`) of concrete next steps the student should take.
+
+    # Feedback style
+
+    - Address the student directly ("Your `app.py:42` initializes Langfuse but never calls `flush()`…").
+    - Lead with what works in each phase. Then describe the gap. Then give the next step.
+    - Avoid vague praise or vague critique. Every bullet must be actionable.
+    - Be terse — the student will use this list to fix their work, not to read prose.
+
+jobs:
+  claude:
+    name: Review (Claude)
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout (merge of PR HEAD into base)
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Run Claude review
+        id: claude
+        uses: anthropics/claude-code-action@v1
         with:
-          python-version: '3.11'
-          cache: pip
-          cache-dependency-path: .github/scripts/requirements.txt
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: ${{ env.REVIEW_PROMPT }}
+          claude_args: --model claude-opus-4-7
 
-      - name: Install evaluator dependencies
-        run: pip install -r .github/scripts/requirements.txt
-
-      - name: Run AI evaluation
-        id: evaluator
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TARGET_BRANCH: ${{ github.base_ref }}
-        run: python .github/scripts/evaluate.py
-
-      - name: Post / update PR review comment
+      - name: Post Claude review as sticky PR comment
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: |
           set -euo pipefail
-          MARKER="<!-- ai-review-bot -->"
-          { echo "$MARKER"; echo; cat review_comment.md; } > comment_body.md
+          MARKER="<!-- claude-review -->"
+          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -f "$EXECUTION_FILE" ]; then
+            echo "No execution file found — Claude step failed before producing output."
+            exit 0
+          fi
+          REVIEW=$(jq -r '
+            [.[] | select(.type == "assistant")] |
+            last |
+            .message.content |
+            map(select(.type == "text") | .text) |
+            join("\n")
+          ' "$EXECUTION_FILE" 2>/dev/null || true)
+          if [ -z "$REVIEW" ] || [ "$REVIEW" = "null" ]; then
+            echo "Empty review text — nothing to post."
+            exit 0
+          fi
+          {
+            echo "$MARKER"
+            echo "## 🤖 Review by Claude (\`claude-opus-4-7\`)"
+            echo
+            printf '%s\n' "$REVIEW"
+          } > body.md
           existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1 || true)
-          payload=$(jq -n --rawfile body comment_body.md '{body: $body}')
+          payload=$(jq -n --rawfile body body.md '{body: $body}')
           if [ -n "$existing" ]; then
-            echo "Updating existing comment $existing"
-            echo "$payload" | gh api "repos/$REPO/issues/comments/$existing" \
-              -X PATCH --input -
+            echo "Updating existing Claude comment $existing"
+            echo "$payload" | gh api "repos/$REPO/issues/comments/$existing" -X PATCH --input -
           else
-            echo "Creating new comment"
-            echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" \
-              -X POST --input -
+            echo "Creating new Claude comment"
+            echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
           fi
 
-      - name: Fail the check if verdict is `failed`
-        if: ${{ steps.evaluator.outputs.grade == 'failed' }}
+  gemini:
+    name: Review (Gemini)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (merge of PR HEAD into base)
+        uses: actions/checkout@v4
+
+      - name: Run Gemini review
+        id: gemini
+        uses: google-github-actions/run-gemini-cli@v0.1.22
+        with:
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_model: gemini-3.1-pro-preview
+          prompt: ${{ env.REVIEW_PROMPT }}
+
+      - name: Post Gemini review as sticky PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SUMMARY: ${{ steps.gemini.outputs.summary }}
         run: |
-          echo "::error::AI verdict: failed. See PR comment for details."
-          exit 1
+          set -euo pipefail
+          MARKER="<!-- gemini-review -->"
+          if [ -z "${SUMMARY:-}" ]; then
+            echo "Gemini produced no summary — nothing to post."
+            exit 0
+          fi
+          {
+            echo "$MARKER"
+            echo "## 🤖 Review by Gemini (\`gemini-3.1-pro-preview\`)"
+            echo
+            printf '%s\n' "$SUMMARY"
+          } > body.md
+          existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1 || true)
+          payload=$(jq -n --rawfile body body.md '{body: $body}')
+          if [ -n "$existing" ]; then
+            echo "Updating existing Gemini comment $existing"
+            echo "$payload" | gh api "repos/$REPO/issues/comments/$existing" -X PATCH --input -
+          else
+            echo "Creating new Gemini comment"
+            echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
+          fi
