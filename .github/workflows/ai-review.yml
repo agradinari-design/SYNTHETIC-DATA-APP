@@ -132,57 +132,8 @@ jobs:
             echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
           fi
 
-  gemini:
-    name: Review (Gemini)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (merge of PR HEAD into base)
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Run Gemini review
-        id: gemini
-        env:
-          GEMINI_CLI_TRUST_WORKSPACE: "true"
-        uses: google-github-actions/run-gemini-cli@v0.1.22
-        with:
-          use_vertex_ai: true
-          gcp_project_id: ${{ secrets.GCP_PROJECT_ID }}
-          gcp_location: us-central1
-          gemini_model: gemini-3.1-pro-preview
-          prompt: ${{ env.REVIEW_PROMPT }}
-
-      - name: Post Gemini review as sticky PR comment
-        if: always()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          SUMMARY: ${{ steps.gemini.outputs.summary }}
-        run: |
-          set -euo pipefail
-          MARKER="<!-- gemini-review -->"
-          if [ -z "${SUMMARY:-}" ]; then
-            echo "Gemini produced no summary — nothing to post."
-            exit 0
-          fi
-          {
-            echo "$MARKER"
-            echo "## 🤖 Review by Gemini (\`gemini-3.1-pro-preview\`)"
-            echo
-            printf '%s\n' "$SUMMARY"
-          } > body.md
-          existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1 || true)
-          payload=$(jq -n --rawfile body body.md '{body: $body}')
-          if [ -n "$existing" ]; then
-            echo "Updating existing Gemini comment $existing"
-            echo "$payload" | gh api "repos/$REPO/issues/comments/$existing" -X PATCH --input -
-          else
-            echo "Creating new Gemini comment"
-            echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
-          fi
+  # Gemini reviewer is currently disabled. To re-enable: restore the `gemini`
+  # job by reverting this commit (the original block lives in git history),
+  # AND make sure the service account `gridu-genai-reviewer@gd-gcp-techlead-experiments`
+  # has `roles/aiplatform.user` granted on the GCP project. Without that role,
+  # the Vertex AI call returns 403 `aiplatform.endpoints.predict denied`.
