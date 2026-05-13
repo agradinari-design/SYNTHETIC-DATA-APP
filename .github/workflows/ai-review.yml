@@ -132,6 +132,53 @@ jobs:
             echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
           fi
 
+      - name: Apply verdict label, notify professor, gate the check
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PROFESSORS: drMacq
+        run: |
+          set -euo pipefail
+          if [ ! -f body.md ]; then
+            echo "No review body file present; skipping verdict labeling and gating."
+            exit 0
+          fi
+
+          if   grep -qE '\*\*Verdict:\*\*[^P]*FAILED' body.md; then
+            VERDICT="failed"; LABEL="ai-verdict/failed"; COLOR="b60205"
+          elif grep -qE '\*\*Verdict:\*\*.*PASSED WITH NOTES' body.md; then
+            VERDICT="passed_with_notes"; LABEL="ai-verdict/passed-with-notes"; COLOR="fbca04"
+          elif grep -qE '\*\*Verdict:\*\*.*PASSED' body.md; then
+            VERDICT="passed"; LABEL="ai-verdict/passed"; COLOR="0e8a16"
+          else
+            echo "Could not detect verdict from the review body — skipping label."
+            exit 0
+          fi
+          echo "Detected verdict: $VERDICT"
+
+          gh label create "$LABEL" --color "$COLOR" --force --repo "$REPO" >/dev/null 2>&1 || true
+
+          for stale in ai-verdict/failed ai-verdict/passed-with-notes ai-verdict/passed; do
+            if [ "$stale" != "$LABEL" ]; then
+              gh pr edit "$PR" --repo "$REPO" --remove-label "$stale" >/dev/null 2>&1 || true
+            fi
+          done
+          gh pr edit "$PR" --repo "$REPO" --add-label "$LABEL"
+
+          if [ "$VERDICT" = "passed" ] || [ "$VERDICT" = "passed_with_notes" ]; then
+            for prof in $(echo "$PROFESSORS" | tr ',' ' '); do
+              gh pr edit "$PR" --repo "$REPO" --add-assignee "$prof" >/dev/null 2>&1 \
+                && echo "Assigned $prof" || echo "Could not assign $prof (already assigned, or no permission)"
+            done
+          fi
+
+          if [ "$VERDICT" = "failed" ]; then
+            echo "::error::AI verdict: failed. Branch protection blocks merge until this clears."
+            exit 1
+          fi
+
   # Gemini reviewer is currently disabled. To re-enable: restore the `gemini`
   # job by reverting this commit (the original block lives in git history),
   # AND make sure the service account `gridu-genai-reviewer@gd-gcp-techlead-experiments`
