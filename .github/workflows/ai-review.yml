@@ -129,20 +129,13 @@ jobs:
           {
             echo "$MARKER"
             echo "## 🤖 Review by Claude (\`claude-opus-4-7\`)"
-            echo "_Last updated **$NOW** for commit \`$HEAD_SHA_SHORT\` · [workflow run #${{ github.run_number }}]($RUN_URL)_"
+            echo "_Posted **$NOW** for commit \`$HEAD_SHA_SHORT\` · [workflow run #${{ github.run_number }}]($RUN_URL)_"
             echo
             printf '%s\n' "$REVIEW"
           } > body.md
-          existing=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
-            --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -n1 || true)
           payload=$(jq -n --rawfile body body.md '{body: $body}')
-          if [ -n "$existing" ]; then
-            echo "Updating existing Claude comment $existing"
-            echo "$payload" | gh api "repos/$REPO/issues/comments/$existing" -X PATCH --input -
-          else
-            echo "Creating new Claude comment"
-            echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
-          fi
+          echo "Creating new Claude review comment (one comment per push)"
+          echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
 
       - name: Apply verdict label, notify professor, gate the check
         if: always()
