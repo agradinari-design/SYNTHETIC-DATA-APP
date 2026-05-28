@@ -94,9 +94,9 @@ jobs:
         run: |
           set -euo pipefail
           git init -q .
-          git remote add origin "https://github.com/${{ github.repository }}"
-          git -c http.extraheader="AUTHORIZATION: bearer $GH_TOKEN" \
-            fetch --no-tags --depth=50 origin "$BASE_SHA" "$HEAD_SHA"
+          git fetch --no-tags --depth=50 \
+            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" \
+            "$BASE_SHA" "$HEAD_SHA"
           git checkout -q "$BASE_SHA"
           git checkout -q "$HEAD_SHA" -- .
 
