@@ -86,18 +86,17 @@ jobs:
     name: Review (Claude)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout base + overlay PR head
+      - name: Checkout base (configures origin + auth)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+
+      - name: Overlay PR head on top of base
         env:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          git init -q .
-          git fetch --no-tags --depth=50 \
-            "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" \
-            "$BASE_SHA" "$HEAD_SHA"
-          git checkout -q "$BASE_SHA"
+          git fetch --no-tags --depth=50 origin "$HEAD_SHA"
           git checkout -q "$HEAD_SHA" -- .
 
       - name: Run Claude review
