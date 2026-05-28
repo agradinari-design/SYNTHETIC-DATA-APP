@@ -86,10 +86,19 @@ jobs:
     name: Review (Claude)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout (merge of PR HEAD into base)
-        uses: actions/checkout@v4
-        with:
-          ref: refs/pull/${{ github.event.pull_request.number }}/merge
+      - name: Checkout base + overlay PR head
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin "https://github.com/${{ github.repository }}"
+          git -c http.extraheader="AUTHORIZATION: bearer $GH_TOKEN" \
+            fetch --no-tags --depth=50 origin "$BASE_SHA" "$HEAD_SHA"
+          git checkout -q "$BASE_SHA"
+          git checkout -q "$HEAD_SHA" -- .
 
       - name: Run Claude review
         id: claude
