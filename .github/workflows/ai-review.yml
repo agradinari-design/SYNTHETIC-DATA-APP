@@ -1,7 +1,7 @@
 name: AI Review
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [prompt, rag, agentic]
     types: [opened, synchronize, reopened]
 
@@ -89,6 +89,8 @@ jobs:
     steps:
       - name: Checkout (merge of PR HEAD into base)
         uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
 
       - name: Run Claude review
         id: claude
