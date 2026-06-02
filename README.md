@@ -134,6 +134,7 @@ You may use any of these (or your own) for testing. A reference UI mock-up is pr
 1. Branch off `prompt`: `git checkout prompt && git checkout -b <user-ldap-id>/prompt-submission`.
 2. Build your project on that branch. The reviewer will read **everything you commit** (excluding `.github/`, caches, and binary assets).
 3. Open a Pull Request targeting the `prompt` branch.
+   - **PR title must follow the convention `First Last - Module Name`** (e.g. `Jan Kowalski - Prompt Engineering`). This is how your professor identifies whose submission they are reading.
 4. Two AI reviewers (Claude + Gemini) run automatically and each posts a sticky PR comment with verdict, technical-requirements table, per-phase analysis, and action items.
 5. Push more commits to re-trigger the reviewers. Each bot updates its existing comment in place.
 6. When you reach `passed` / `passed_with_notes` on both, request final review from your professor.
