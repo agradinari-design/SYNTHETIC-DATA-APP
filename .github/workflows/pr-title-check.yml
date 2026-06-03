@@ -1,0 +1,156 @@
+name: PR title convention
+
+# Nudges students whose PR title does not match the
+# "First Last - Module Name" convention documented in the README.
+#
+# Behaviour:
+# - title matches → silent (any prior nudge comment is removed)
+# - title mismatch → sticky "please rename" comment posted/updated
+#
+# This is a soft check — it does NOT fail the workflow, so it does NOT
+# block the AI review or any branch protection. The professor uses the
+# title to identify whose submission they are reading; this workflow
+# just keeps the convention visible.
+
+on:
+  pull_request_target:
+    branches: [prompt, rag, agentic]
+    types: [opened, edited, reopened]
+
+permissions:
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check-title:
+    name: Validate PR title format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate title and manage sticky comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE_REF: ${{ github.base_ref }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          python3 <<'PYEOF'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          MARKER = "<!-- pr-title-check -->"
+
+          MODULES = {
+              "prompt": "Prompt Engineering",
+              "rag": "RAG",
+              "agentic": "Agentic Systems",
+          }
+
+          title = os.environ["PR_TITLE"]
+          base_ref = os.environ["BASE_REF"]
+          repo = os.environ["REPO"]
+          pr_number = os.environ["PR_NUMBER"]
+
+          if base_ref not in MODULES:
+              print(f"Unknown base branch {base_ref!r} — skipping.")
+              sys.exit(0)
+
+          module = MODULES[base_ref]
+          suffix = f" - {module}"
+
+          # --- Validate ---
+          reason = None
+          if not title.endswith(suffix):
+              reason = (
+                  f"Your title must end with `- {module}`, but it currently does not.\n\n"
+                  f"Got: `{title}`"
+              )
+          else:
+              name_part = title[: -len(suffix)].strip()
+              tokens = name_part.split()
+              if len(tokens) < 2:
+                  reason = (
+                      f"Your title must include at least a first and last name before "
+                      f"`- {module}`.\n\nName part found: `{name_part!s}`"
+                  )
+              elif not all(tok[:1].isupper() for tok in tokens):
+                  bad = [tok for tok in tokens if not tok[:1].isupper()]
+                  reason = (
+                      f"Each name token must start with an uppercase letter. "
+                      f"These tokens do not: `{', '.join(bad)}`."
+                  )
+
+          ok = reason is None
+          print(f"Title check: {'OK' if ok else 'MISMATCH'}")
+
+          # --- Find existing marker comment ---
+          def gh_api(args, **kwargs):
+              return subprocess.run(
+                  ["gh", "api"] + args,
+                  capture_output=True, text=True, check=False, **kwargs,
+              )
+
+          listing = gh_api([f"repos/{repo}/issues/{pr_number}/comments", "--paginate"])
+          comments = json.loads(listing.stdout) if listing.stdout.strip() else []
+          existing = next((c for c in comments if MARKER in c.get("body", "")), None)
+
+          if ok:
+              if existing:
+                  gh_api([
+                      "-X", "DELETE",
+                      f"repos/{repo}/issues/comments/{existing['id']}",
+                  ])
+                  print("Title now matches — removed prior nudge comment.")
+              else:
+                  print("Title matches — nothing to post.")
+              sys.exit(0)
+
+          # --- Compose nudge body ---
+          body = (
+              f"{MARKER}\n"
+              f"## ⚠️ PR title convention check\n\n"
+              f"{reason}\n\n"
+              f"**Expected format:** `First Last - {module}`\n\n"
+              f"Examples for this module:\n"
+              f"- `Jan Kowalski - {module}`\n"
+              f"- `Anna Nowak - {module}`\n\n"
+              f"Your professor uses the PR title to identify whose submission they "
+              f"are reading. You can edit the title at the top of this PR — this "
+              f"check will re-run automatically and remove this comment once the "
+              f"title matches.\n\n"
+              f"_This is a soft check — it does not block the AI review or the merge gate._\n"
+          )
+
+          payload = json.dumps({"body": body})
+
+          if existing:
+              result = gh_api(
+                  [
+                      "-X", "PATCH",
+                      f"repos/{repo}/issues/comments/{existing['id']}",
+                      "--input", "-",
+                  ],
+                  input=payload,
+              )
+              print(f"Updated existing nudge comment ({result.returncode=}).")
+          else:
+              result = gh_api(
+                  [
+                      "-X", "POST",
+                      f"repos/{repo}/issues/{pr_number}/comments",
+                      "--input", "-",
+                  ],
+                  input=payload,
+              )
+              print(f"Posted new nudge comment ({result.returncode=}).")
+
+          if result.returncode != 0:
+              print(f"gh stderr: {result.stderr}", file=sys.stderr)
+              sys.exit(1)
+          PYEOF
