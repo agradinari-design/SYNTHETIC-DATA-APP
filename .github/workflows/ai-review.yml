@@ -71,9 +71,22 @@ env:
 
       If yes → **verdict = `failed`**. Stop, explain, continue.
 
-    - **Q4.** Every mandatory item is present, functional end-to-end, AND delivers exactly what the spec describes. Is the submission ALSO free of substitutions, quality concerns worth flagging, and design deviations?
+    - **Q4.** Every mandatory item is present, functional end-to-end, AND delivers what the spec describes. Beyond that, does the submission contain ANY of:
+      - a substitution of a named technology/tool/feature (e.g. Plotly instead of Seaborn when the spec named Seaborn);
+      - a design deviation from what the spec literally asks for (e.g. streaming wired only to a post-hoc polish rewrite instead of the main answer; schema routing that fires only in a narrow window the spec didn't ask to narrow)?
 
-      If yes → **verdict = `passed`**. Otherwise → **verdict = `passed_with_notes`**.
+      **Quality suggestions are NOT deviations.** Refactoring ideas, edge-case robustness improvements, code-quality polish, suggestions for future hardening, dead config flags worth cleaning up, narrow operating windows that still meet the spec — these are NORMAL output of every thorough review. They go into Action items but they do NOT lower the verdict. The bar for `passed` is *spec compliance*, not *zero suggestions*.
+
+      If you found substitutions or design deviations → **verdict = `passed_with_notes`**.
+      Otherwise → **verdict = `passed`**.
+
+      **Common reviewer trap to avoid:** writing "every mandatory item works, here are some suggestions" and then downgrading to `passed_with_notes` because the suggestions exist. The suggestions exist BECAUSE you did a thorough review. A complete, working submission earns `passed` even with 3–5 quality polish items in action items. If your own *Overall assessment* says something like "Nothing here trips the failure bar — this is a complete, working end-to-end submission", the verdict is `passed`, not `passed_with_notes`.
+
+      Concrete examples:
+      - "Every mandatory item is wired in end-to-end, but I'd suggest moving the temperature default to a module-level constant rather than a magic number." → `passed`. (Code quality suggestion, not a spec deviation.)
+      - "Every mandatory item is wired in end-to-end, but the streaming function-call history append has a multi-chunk edge case where the function_call part may desync." → `passed`. (Edge-case robustness suggestion; the spec asks for streamed responses and they are streamed.)
+      - "Every mandatory item is wired in end-to-end, but the student used Plotly Express instead of the spec's named Seaborn for the in-chat plots." → `passed_with_notes`. (Substitution of a named library.)
+      - "Every mandatory item is wired in end-to-end, but streaming only runs on a polished rewrite produced after the answer is fully generated." → `passed_with_notes`. (Design deviation: the spec asks streaming to be on the main response.)
 
     The threshold between `failed` and `passed_with_notes` is the MANDATORY BAR, not "how much effort the student put in". A student who built 80% of a complete system and missed one mandatory item gets `failed` with a thorough, encouraging review — that's still useful feedback, just honest about the bar. Effort and partial credit live in the per-phase write-up, not the verdict.
 
@@ -85,7 +98,9 @@ env:
 
     1. **Verdict checklist** — the `### Verdict checklist` with Q1–Q4 answers as described above. This must be the first content after any preamble.
 
-    2. **Verdict** — one line: `**Verdict:** ✅ PASSED` / `🟡 PASSED WITH NOTES` / `❌ FAILED`.
+    2. **Verdict** — one line in this EXACT format: `**Verdict:** ✅ PASSED` / `**Verdict:** 🟡 PASSED WITH NOTES` / `**Verdict:** ❌ FAILED`.
+
+       Format requirement (strict): the verdict line MUST start with inline bold `**Verdict:**`. Do NOT use a markdown header (`### Verdict`, `## Verdict`, `# Verdict`, `### Verdict:`). The CI verdict-detection regex matches the inline-bold form only — using a header silently breaks the label automation that tells the professor which PRs are ready for them. The other `###` section headers in your review are fine; only this one specific line is inline-bold.
 
     3. **Overall assessment** — 2–3 sentences naming the biggest strength and the biggest gap. If the verdict is `failed`, name the specific Q1–Q3 trigger in the first sentence.
 
@@ -194,11 +209,14 @@ jobs:
             exit 0
           fi
 
-          if   grep -qE '\*\*Verdict:\*\*[^P]*FAILED' body.md; then
+          # Tolerate both formats in case the reviewer drifts from the inline-bold
+          # spec to a markdown-header form; the prompt enforces inline-bold but
+          # belt-and-suspenders for label automation reliability.
+          if   grep -qE '(\*\*Verdict:?\*\*|#{1,3} Verdict:?)[^P]*FAILED' body.md; then
             VERDICT="failed"; LABEL="ai-verdict/failed"; COLOR="b60205"
-          elif grep -qE '\*\*Verdict:\*\*.*PASSED WITH NOTES' body.md; then
+          elif grep -qE '(\*\*Verdict:?\*\*|#{1,3} Verdict:?).*PASSED WITH NOTES' body.md; then
             VERDICT="passed_with_notes"; LABEL="ai-verdict/passed-with-notes"; COLOR="fbca04"
-          elif grep -qE '\*\*Verdict:\*\*.*PASSED' body.md; then
+          elif grep -qE '(\*\*Verdict:?\*\*|#{1,3} Verdict:?).*PASSED' body.md; then
             VERDICT="passed"; LABEL="ai-verdict/passed"; COLOR="0e8a16"
           else
             echo "Could not detect verdict from the review body — skipping label."
