@@ -185,9 +185,8 @@ jobs:
           if [ -n "$PREV" ]; then
             printf '%s' "$PREV" > .ai-review-prior.md
             PRIOR_SHA=$(printf '%s' "$PREV" \
-              | grep -oE 'for commit `[a-f0-9]+`' \
-              | head -1 \
-              | grep -oE '[a-f0-9]+' || true)
+              | sed -nE 's/.*for commit `([a-f0-9]+)`.*/\1/p' \
+              | head -1)
             if [ -n "$PRIOR_SHA" ]; then
               printf '%s' "$PRIOR_SHA" > .ai-review-prior-sha
               git fetch --no-tags --depth=20 origin "$PRIOR_SHA" 2>/dev/null \
