@@ -14,7 +14,7 @@ name: PR title convention
 
 on:
   pull_request_target:
-    branches: [prompt, rag, agentic]
+    branches: [prompt, rag, agentic, basic-prompt]
     types: [opened, edited, reopened]
 
 permissions:
@@ -50,6 +50,7 @@ jobs:
               "prompt": "Prompt Engineering",
               "rag": "RAG",
               "agentic": "Agentic Systems",
+              "basic-prompt": "Prompt Engineering Basic",
           }
 
           title = os.environ["PR_TITLE"]

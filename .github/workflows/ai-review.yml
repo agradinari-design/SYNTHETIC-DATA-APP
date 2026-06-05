@@ -2,7 +2,7 @@ name: AI Review
 
 on:
   pull_request_target:
-    branches: [prompt, rag, agentic]
+    branches: [prompt, rag, agentic, basic-prompt]
     types: [opened, synchronize, reopened]
 
 permissions:

@@ -1,6 +1,6 @@
 name: Merge block
 
-# Module branches (prompt / rag / agentic) are evaluation targets only.
+# Module branches (prompt / rag / agentic / basic-prompt) are evaluation targets only.
 # Their PRs are never merged. This workflow's sole job is to fail every
 # PR run against those branches so branch protection can require a green
 # `Merge blocked (no-merge policy)` check — which never goes green —
@@ -12,7 +12,7 @@ name: Merge block
 
 on:
   pull_request_target:
-    branches: [prompt, rag, agentic]
+    branches: [prompt, rag, agentic, basic-prompt]
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:

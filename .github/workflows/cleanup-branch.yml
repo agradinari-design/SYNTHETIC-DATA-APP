@@ -11,7 +11,7 @@ name: Cleanup head branch
 on:
   pull_request:
     types: [closed]
-    branches: [prompt, rag, agentic]
+    branches: [prompt, rag, agentic, basic-prompt]
 
 permissions:
   contents: write
