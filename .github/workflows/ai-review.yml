@@ -55,6 +55,32 @@ env:
 
        A submission whose declared environment cannot be installed on a clean checkout is not delivered end-to-end, no matter how complete the code looks. Treat broken-environment as a single mandatory failure.
 
+    7. **Exhaustiveness (first review on a PR).** Walk EVERY phase and EVERY mandatory item top to bottom. List every spec-relevant gap you find — missing items, misimplementations, non-functional paths, broken reproducibility, substitutions, design deviations, and (separately) quality polish suggestions.
+
+       Do not stop after the first few findings. Do not save items "for next iteration". The student will fix what you flag — anything you don't surface now becomes a moving goalpost in the next round, which breaks trust in the review. If you find 12 issues, list 12. If you find 3, list 3.
+
+    8. **Regression check (when prior reviews exist).** Before forming your verdict, check whether `.ai-review-prior.md` exists in the repo root. If it does, it is your most recent prior review on this PR, and `.ai-review-prior-sha` contains the commit SHA it was generated against. Read both.
+
+       Run `git diff "$(cat .ai-review-prior-sha)" HEAD` (filtered to source files) to see what the student changed since.
+
+       Apply these rules — they are NOT optional, they are the contract with the student:
+
+       - **Unchanged code.** Flag ONLY issues the prior review's action items already listed. Do NOT introduce new findings on code that hasn't moved since the prior review. If the prior reviewer missed something there, that is the prior reviewer's mistake, not the student's, and it is unfair to introduce it now.
+
+         Single exception — true Q1/Q2/Q3-level mandatory failures (`NameError`, broken `import`, missing module, broken reproducibility, omitted mandatory item that prior review somehow skipped). You may flag these even on unchanged code, but you MUST write in *Overall assessment*: "Prior review missed [X] on unchanged code; flagging now because it is a mandatory failure."
+
+       - **Changed or new code.** Full exhaustive review per section 7. Flag every spec-relevant issue you find.
+
+       - **Escalation.** If the student has genuinely addressed every action item from the prior review (verify by reading the current code, not by trusting commit messages), ESCALATE the verdict by one notch:
+         - prior `failed` → this review may be `passed_with_notes`
+         - prior `passed_with_notes` → this review may be `passed`
+
+         New Q4-type findings on changed code do NOT block escalation. The student fixed what you asked; rewarding that is the entire point.
+
+       - **Be explicit in *Overall assessment*.** Open with: "Since the prior review you addressed [bullet list]. [Either: I'm escalating to X / Or: I'm holding at Y because of new finding Z on changed code]."
+
+       If `.ai-review-prior.md` does NOT exist, this is the first iteration on the PR — section 7 (Exhaustiveness) is the rule that governs. Be thorough.
+
     # Verdict — answer these in order, write the answers visibly in the review
 
     Before writing the verdict line, you MUST write the following four checks as a bulleted list (`### Verdict checklist`) at the top of your review. Cite specific file:line evidence for any "yes" answer. Do this even if it feels mechanical — the professor uses these to audit your reasoning.
@@ -146,6 +172,33 @@ jobs:
           set -euo pipefail
           git fetch --no-tags --depth=50 origin "$HEAD_SHA"
           git checkout -q "$HEAD_SHA" -- .
+
+      - name: Fetch previous Claude review (for regression tracking)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          PREV=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.body | startswith("<!-- claude-review -->"))] | .[-1].body // ""')
+          if [ -n "$PREV" ]; then
+            printf '%s' "$PREV" > .ai-review-prior.md
+            PRIOR_SHA=$(printf '%s' "$PREV" \
+              | grep -oE 'for commit `[a-f0-9]+`' \
+              | head -1 \
+              | grep -oE '[a-f0-9]+' || true)
+            if [ -n "$PRIOR_SHA" ]; then
+              printf '%s' "$PRIOR_SHA" > .ai-review-prior-sha
+              git fetch --no-tags --depth=20 origin "$PRIOR_SHA" 2>/dev/null \
+                || echo "Warning: could not fetch prior commit $PRIOR_SHA (may be unreachable)"
+              echo "Wrote .ai-review-prior.md and .ai-review-prior-sha (commit $PRIOR_SHA)"
+            else
+              echo "Warning: could not extract prior commit SHA from sticky comment"
+            fi
+          else
+            echo "No prior review found — first iteration on this PR"
+          fi
 
       - name: Run Claude review
         id: claude
