@@ -216,9 +216,8 @@ jobs:
           classify_inline_comments: "false"
           prompt: ${{ env.REVIEW_PROMPT }}
           # Bifrost needs the provider-prefixed model id to route the request; the
-          # bare "claude-sonnet-5" fails with "could not auto resolve a provider".
-          # (claude-opus-4-8 is not permitted for our Bifrost virtual key — 403.)
-          claude_args: --model anthropic/claude-sonnet-5
+          # bare "claude-opus-4-8" fails with "could not auto resolve a provider".
+          claude_args: --model anthropic/claude-opus-4-8
 
       - name: Post Claude review as sticky PR comment
         if: always()
@@ -250,7 +249,7 @@ jobs:
           HEAD_SHA_SHORT=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           {
             echo "$MARKER"
-            echo "## 🤖 Review by Claude (\`claude-sonnet-5\`)"
+            echo "## 🤖 Review by Claude (\`claude-opus-4-8\`)"
             echo "_Posted **$NOW** for commit \`$HEAD_SHA_SHORT\` · [workflow run #${{ github.run_number }}]($RUN_URL)_"
             echo
             printf '%s\n' "$REVIEW"
