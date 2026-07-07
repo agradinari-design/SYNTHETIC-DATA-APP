@@ -202,11 +202,22 @@ jobs:
       - name: Run Claude review
         id: claude
         uses: anthropics/claude-code-action@v1
+        env:
+          # Route Anthropic-API traffic through the Grid Dynamics Bifrost gateway
+          # instead of api.anthropic.com. anthropic_api_key below is still required.
+          ANTHROPIC_BASE_URL: https://${{ vars.BIFROST_URL }}/anthropic
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.BIFROST_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Disabled: this action's internal inline-comment classification step
+          # does not forward ANTHROPIC_BASE_URL and would hit api.anthropic.com
+          # directly with the Bifrost-only key. We post the review ourselves, so
+          # it is a no-op for us — kept as defense-in-depth.
+          classify_inline_comments: "false"
           prompt: ${{ env.REVIEW_PROMPT }}
-          claude_args: --model claude-opus-4-8
+          # Bifrost needs the provider-prefixed model id to route the request; the
+          # bare "claude-opus-4-8" fails with "could not auto resolve a provider".
+          claude_args: --model anthropic/claude-opus-4-8
 
       - name: Post Claude review as sticky PR comment
         if: always()
