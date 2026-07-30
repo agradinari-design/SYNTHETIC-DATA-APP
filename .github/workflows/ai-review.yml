@@ -217,7 +217,7 @@ jobs:
           prompt: ${{ env.REVIEW_PROMPT }}
           # Bifrost needs the provider-prefixed model id to route the request; the
           # bare "claude-opus-4-8" fails with "could not auto resolve a provider".
-          claude_args: --model anthropic/claude-opus-4-8
+          claude_args: --model anthropic/claude-sonnet-5
 
       - name: Post Claude review as sticky PR comment
         if: always()
