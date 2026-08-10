@@ -15,6 +15,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Single source of truth for the review model — referenced by both the
+  # claude_args below and the sticky-comment header, so they can't drift
+  # out of sync the way they did when the model was hardcoded in two places.
+  CLAUDE_MODEL: anthropic/claude-sonnet-5
   REVIEW_PROMPT: |
     You are a senior reviewer evaluating a student's capstone submission for a Grid University training course. This Pull Request targets the **${{ github.base_ref }}** module branch.
 
@@ -217,7 +221,7 @@ jobs:
           prompt: ${{ env.REVIEW_PROMPT }}
           # Bifrost needs the provider-prefixed model id to route the request; the
           # bare "claude-opus-4-8" fails with "could not auto resolve a provider".
-          claude_args: --model anthropic/claude-sonnet-5
+          claude_args: --model ${{ env.CLAUDE_MODEL }}
 
       - name: Post Claude review as sticky PR comment
         if: always()
@@ -249,7 +253,7 @@ jobs:
           HEAD_SHA_SHORT=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           {
             echo "$MARKER"
-            echo "## 🤖 Review by Claude (\`claude-opus-4-8\`)"
+            echo "## 🤖 Review by Claude (\`${{ env.CLAUDE_MODEL }}\`)"
             echo "_Posted **$NOW** for commit \`$HEAD_SHA_SHORT\` · [workflow run #${{ github.run_number }}]($RUN_URL)_"
             echo
             printf '%s\n' "$REVIEW"
