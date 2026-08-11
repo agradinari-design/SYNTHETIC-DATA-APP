@@ -210,6 +210,15 @@ jobs:
           # Route Anthropic-API traffic through the Grid Dynamics Bifrost gateway
           # instead of api.anthropic.com. anthropic_api_key below is still required.
           ANTHROPIC_BASE_URL: https://${{ vars.BIFROST_URL }}/anthropic
+          # Grid Dynamics' Anthropic org is HIPAA-regulated without Zero Data
+          # Retention, which rejects experimental-beta requests (e.g. the
+          # `context-management-2025-06-27` header the CLI now attaches by
+          # default on longer sessions) with "API Error: 400 The requested
+          # features are not available for HIPAA-regulated organizations
+          # without Zero Data Retention: context_management". Disabling
+          # experimental betas keeps the CLI on the stable request shape that
+          # Bifrost/the org's Anthropic account will accept.
+          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
         with:
           anthropic_api_key: ${{ secrets.BIFROST_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
