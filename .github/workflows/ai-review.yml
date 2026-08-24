@@ -285,34 +285,57 @@ jobs:
             }
           }' > "$HOME/.config/opencode/opencode.jsonc"
 
+      # anomalyco/opencode's own GitHub Action (the wrapper used on
+      # cto-rnd-cerebra-core's sibling migration) hard-rejects this job's
+      # trigger event with "Unsupported event type: pull_request_target" -
+      # discovered during validation of this exact migration. Since this
+      # design needs none of that action's GitHub-posting machinery anyway
+      # (no inline comments, no PR-write tools - see the permissions
+      # comment above), this invokes the plain `opencode run` CLI directly
+      # instead, installed fresh each run and pinned to a specific release
+      # (not "latest") for the same untrusted-content reasoning as the
+      # digest-pinned action above.
+      - name: Install opencode CLI
+        run: curl -fsSL https://opencode.ai/install | bash -s -- --version 1.0.180
+
       - name: Run opencode review
         id: opencode
-        # Pinned to a full commit SHA (not a floating tag): this job runs
-        # against untrusted PR content (pull_request_target exposes
-        # BIFROST_API_KEY), so we do not want the action code to change
-        # underneath us. Bump deliberately.
-        uses: anomalyco/opencode/github@da4730e4a41dcbb2cb2d907dd2b06ac481b8f962
         env:
           BIFROST_API_KEY: ${{ secrets.BIFROST_API_KEY }}
-        with:
-          model: openai/${{ env.REVIEW_MODEL }}
-          prompt: |
-            ${{ env.REVIEW_PROMPT }}
+          PROMPT_TEXT: ${{ env.REVIEW_PROMPT }}
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.opencode/bin:$PATH"
 
-            # How to deliver your review
+          # Written via env-var + printf (not interpolated directly into this
+          # script) because the prompt text contains many literal backticks
+          # and dollar-prefixed tokens (e.g. NameError in backticks) that the
+          # shell would otherwise try to parse as command/variable
+          # substitution if the raw prompt template expression were spliced
+          # directly into this run block's text. NOTE: never write a literal
+          # double-curly GitHub Actions expression inside a comment in a run
+          # block either - it gets substituted there too, which is exactly
+          # the bug this comment itself once caused.
+          printf '%s' "$PROMPT_TEXT" > /tmp/review_prompt.txt
+          cat >> /tmp/review_prompt.txt <<'PROMPT_EOF'
 
-            Do NOT use `gh`, `git commit`, `git push`, or any GitHub API/CLI
-            tool - none are available or permitted in this environment, and
-            attempting them will fail. When you have finished your analysis,
-            write your ENTIRE review (everything from "### Verdict
-            checklist" onward, in the exact Output format specified above,
-            as one single markdown document) to a new file named
-            `review_output.md` in the repository root using your file-write
-            tool. A separate, deterministic step will read that file and
-            post it as the PR comment - so `review_output.md` must contain
-            the complete, final review and nothing else (no preamble like
-            "Here is my review:", no code fences wrapping the whole
-            document).
+          # How to deliver your review
+
+          Do NOT use `gh`, `git commit`, `git push`, or any GitHub API/CLI
+          tool - none are available or permitted in this environment, and
+          attempting them will fail. When you have finished your analysis,
+          write your ENTIRE review (everything from "### Verdict
+          checklist" onward, in the exact Output format specified above,
+          as one single markdown document) to a new file named
+          `review_output.md` in the repository root using your file-write
+          tool. A separate, deterministic step will read that file and
+          post it as the PR comment - so `review_output.md` must contain
+          the complete, final review and nothing else (no preamble like
+          "Here is my review:", no code fences wrapping the whole
+          document).
+          PROMPT_EOF
+
+          opencode run "$(cat /tmp/review_prompt.txt)" --model "openai/${{ env.REVIEW_MODEL }}"
 
       - name: Post review as sticky PR comment
         if: always()
