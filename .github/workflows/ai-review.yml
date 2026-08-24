@@ -2,7 +2,7 @@ name: AI Review
 
 on:
   pull_request_target:
-    branches: [prompt, rag, agentic, basic-prompt]
+    branches: [main, prompt, rag, agentic, basic-prompt]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -16,9 +16,23 @@ concurrency:
 
 env:
   # Single source of truth for the review model — referenced by both the
-  # claude_args below and the sticky-comment header, so they can't drift
+  # opencode config below and the sticky-comment header, so they can't drift
   # out of sync the way they did when the model was hardcoded in two places.
-  CLAUDE_MODEL: anthropic/claude-sonnet-5
+  #
+  # Migrated from anthropic/claude-sonnet-5 (claude-code-action) to GPT-5.6
+  # Luna (opencode) after Claude Sonnet 5 was retired from Bifrost: every
+  # recent run failed instantly with is_error:true, total_cost_usd:0,
+  # duration_ms~200 (a model-not-found-style rejection at the very first
+  # turn, before any tokens were spent). See RNDCRBR-1502 for the sibling
+  # migration on cto-rnd-cerebra-core, including why GPT-5.6 Luna needs
+  # opencode rather than a Chat-Completions-only client: it does not support
+  # tool calls together with reasoning on Chat Completions (Bifrost's
+  # model-parameters datasheet: supports_reasoning_with_tool_calls: false
+  # for this model — an OpenAI-side model limitation, not a Bifrost bug).
+  # opencode via Bifrost's documented "openai" provider override
+  # (docs.getbifrost.ai/cli-agents/opencode) uses the Responses API path
+  # instead, which supports both together.
+  REVIEW_MODEL: openai/gpt-5.6-luna
   REVIEW_PROMPT: |
     You are a senior reviewer evaluating a student's capstone submission for a Grid University training course. This Pull Request targets the **${{ github.base_ref }}** module branch.
 
@@ -161,6 +175,14 @@ env:
 
 jobs:
   claude:
+    # NOTE: job name deliberately kept as "Review (Claude)" even though the
+    # reviewer is now GPT-5.6 Luna / opencode - this exact string is a
+    # required status check in branch protection on prompt/basic-prompt/
+    # rag/agentic ("Review (Claude)"). Renaming it would silently break
+    # required-check matching and leave every future PR stuck with a
+    # perpetually-missing required check. Job id ("claude") kept for the
+    # same reason (minimal diff / no accidental cross-references), even
+    # though it's now a misnomer.
     name: Review (Claude)
     runs-on: ubuntu-latest
     steps:
@@ -177,13 +199,18 @@ jobs:
           git fetch --no-tags --depth=50 origin "$HEAD_SHA"
           git checkout -q "$HEAD_SHA" -- .
 
-      - name: Fetch previous Claude review (for regression tracking)
+      - name: Fetch previous review (for regression tracking)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
+          # Marker kept as "claude-review" (not renamed to "ai-review") so
+          # regression tracking keeps working for PRs that already have
+          # prior review comments from the Claude era - renaming it would
+          # make every open PR look like a fresh first iteration and lose
+          # the escalation history the student is owed.
           PREV=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
             --jq '[.[] | select(.body | startswith("<!-- claude-review -->"))] | .[-1].body // ""')
           if [ -n "$PREV" ]; then
@@ -203,58 +230,101 @@ jobs:
             echo "No prior review found — first iteration on this PR"
           fi
 
-      - name: Run Claude review
-        id: claude
-        uses: anthropics/claude-code-action@v1
+      # Bifrost's documented config pattern (docs.getbifrost.ai/cli-agents/opencode):
+      # override the built-in "openai" provider id, baseURL without "/v1", model
+      # keys as full "provider/model" strings. reasoningEffort:"high" is safe here
+      # specifically because this uses that real "openai" adapter (not a custom
+      # "-compatible" provider, which would require reasoningEffort:"none" to
+      # dodge a 400 and likely ship shallow reviews as a side effect).
+      #
+      # No GitHub write tool is granted to opencode at all (no gh CLI, no MCP
+      # server) - unlike the sibling cto-rnd-cerebra-core migration, this
+      # reviewer only needs to WRITE one local file (review_output.md); a
+      # separate, deterministic script step (below) posts it as the PR
+      # comment. This keeps the tool surface opencode has access to (while
+      # processing untrusted, pull_request_target-exposed student code)
+      # limited to local file read/write + read-only git history commands.
+      - name: Configure Bifrost provider + permissions
         env:
-          # Route Anthropic-API traffic through the Grid Dynamics Bifrost gateway
-          # instead of api.anthropic.com. anthropic_api_key below is still required.
-          ANTHROPIC_BASE_URL: https://${{ vars.BIFROST_URL }}/anthropic
-          # Grid Dynamics' Anthropic org is HIPAA-regulated without Zero Data
-          # Retention, which rejects experimental-beta requests (e.g. the
-          # `context-management-2025-06-27` header the CLI now attaches by
-          # default on longer sessions) with "API Error: 400 The requested
-          # features are not available for HIPAA-regulated organizations
-          # without Zero Data Retention: context_management". Disabling
-          # experimental betas keeps the CLI on the stable request shape that
-          # Bifrost/the org's Anthropic account will accept.
-          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS: "1"
-        with:
-          anthropic_api_key: ${{ secrets.BIFROST_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Disabled: this action's internal inline-comment classification step
-          # does not forward ANTHROPIC_BASE_URL and would hit api.anthropic.com
-          # directly with the Bifrost-only key. We post the review ourselves, so
-          # it is a no-op for us — kept as defense-in-depth.
-          classify_inline_comments: "false"
-          prompt: ${{ env.REVIEW_PROMPT }}
-          # Bifrost needs the provider-prefixed model id to route the request; the
-          # bare "claude-opus-4-8" fails with "could not auto resolve a provider".
-          claude_args: --model ${{ env.CLAUDE_MODEL }}
+          BIFROST_URL: ${{ vars.BIFROST_URL }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.config/opencode"
+          jq -n --arg baseURL "https://${BIFROST_URL}/openai" --arg model "${{ env.REVIEW_MODEL }}" '{
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+              "openai": {
+                "name": "Bifrost",
+                "options": {
+                  "baseURL": $baseURL,
+                  "apiKey": "{env:BIFROST_API_KEY}"
+                },
+                "models": {
+                  ($model): { "name": "GPT-5.6 Luna (via Bifrost)" }
+                }
+              }
+            },
+            "agent": {
+              "build": {
+                "reasoningEffort": "high",
+                "textVerbosity": "high"
+              }
+            },
+            "permission": {
+              "*": "deny",
+              "read": "allow",
+              "grep": "allow",
+              "glob": "allow",
+              "write": "allow",
+              "bash": {
+                "*": "deny",
+                "git log*": "allow",
+                "git diff*": "allow",
+                "git show*": "allow"
+              }
+            }
+          }' > "$HOME/.config/opencode/opencode.jsonc"
 
-      - name: Post Claude review as sticky PR comment
+      - name: Run opencode review
+        id: opencode
+        # Pinned to a full commit SHA (not a floating tag): this job runs
+        # against untrusted PR content (pull_request_target exposes
+        # BIFROST_API_KEY), so we do not want the action code to change
+        # underneath us. Bump deliberately.
+        uses: anomalyco/opencode/github@da4730e4a41dcbb2cb2d907dd2b06ac481b8f962
+        env:
+          BIFROST_API_KEY: ${{ secrets.BIFROST_API_KEY }}
+        with:
+          model: openai/${{ env.REVIEW_MODEL }}
+          prompt: |
+            ${{ env.REVIEW_PROMPT }}
+
+            # How to deliver your review
+
+            Do NOT use `gh`, `git commit`, `git push`, or any GitHub API/CLI
+            tool - none are available or permitted in this environment, and
+            attempting them will fail. When you have finished your analysis,
+            write your ENTIRE review (everything from "### Verdict
+            checklist" onward, in the exact Output format specified above,
+            as one single markdown document) to a new file named
+            `review_output.md` in the repository root using your file-write
+            tool. A separate, deterministic step will read that file and
+            post it as the PR comment - so `review_output.md` must contain
+            the complete, final review and nothing else (no preamble like
+            "Here is my review:", no code fences wrapping the whole
+            document).
+
+      - name: Post review as sticky PR comment
         if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
         run: |
           set -euo pipefail
           MARKER="<!-- claude-review -->"
-          if [ -z "${EXECUTION_FILE:-}" ] || [ ! -f "$EXECUTION_FILE" ]; then
-            echo "No execution file found — Claude step failed before producing output."
-            exit 0
-          fi
-          REVIEW=$(jq -r '
-            [.[] | select(.type == "assistant")] |
-            last |
-            .message.content |
-            map(select(.type == "text") | .text) |
-            join("\n")
-          ' "$EXECUTION_FILE" 2>/dev/null || true)
-          if [ -z "$REVIEW" ] || [ "$REVIEW" = "null" ]; then
-            echo "Empty review text — nothing to post."
+          if [ ! -s review_output.md ]; then
+            echo "No review_output.md (or it's empty) — opencode step failed before producing output."
             exit 0
           fi
           NOW=$(date -u +'%Y-%m-%d %H:%M UTC')
@@ -262,13 +332,13 @@ jobs:
           HEAD_SHA_SHORT=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
           {
             echo "$MARKER"
-            echo "## 🤖 Review by Claude (\`${{ env.CLAUDE_MODEL }}\`)"
+            echo "## 🤖 Review by opencode (\`${{ env.REVIEW_MODEL }}\`)"
             echo "_Posted **$NOW** for commit \`$HEAD_SHA_SHORT\` · [workflow run #${{ github.run_number }}]($RUN_URL)_"
             echo
-            printf '%s\n' "$REVIEW"
+            cat review_output.md
           } > body.md
           payload=$(jq -n --rawfile body body.md '{body: $body}')
-          echo "Creating new Claude review comment (one comment per push)"
+          echo "Creating new review comment (one comment per push)"
           echo "$payload" | gh api "repos/$REPO/issues/$PR/comments" -X POST --input -
 
       - name: Apply verdict label, notify professor, gate the check
