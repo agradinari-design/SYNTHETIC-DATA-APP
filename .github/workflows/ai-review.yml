@@ -335,7 +335,41 @@ jobs:
           document).
           PROMPT_EOF
 
-          opencode run "$(cat /tmp/review_prompt.txt)" --model "openai/${{ env.REVIEW_MODEL }}"
+          # opencode can exit 0 even when it never actually finishes the
+          # task: verified against real CI runs on this repo, an unrecovered
+          # "unknown stream finish" from the upstream provider/Bifrost proxy
+          # makes it quietly end the run mid-turn - no error printed, no
+          # review_output.md written, exit code 0. `set -e` can't catch this
+          # because opencode's own exit code is fine; only the missing
+          # artifact reveals it. This was previously silent: the next step's
+          # `[ ! -s review_output.md ]` guard logged a message but exited 0,
+          # so the whole job (and the required "Review (Claude)" check)
+          # reported green with no review ever posted. Verify the artifact
+          # explicitly and retry once - a bare human rerun reliably fixed
+          # this before, confirming it's transient upstream flakiness rather
+          # than a deterministic prompt/model bug - then fail loudly if it
+          # still didn't produce output, so a real failure surfaces as a red
+          # check instead of a silently-empty green one.
+          MAX_ATTEMPTS=2
+          attempt=1
+          while :; do
+            echo "opencode run attempt $attempt/$MAX_ATTEMPTS"
+            rm -f review_output.md
+            opencode run "$(cat /tmp/review_prompt.txt)" --model "openai/${{ env.REVIEW_MODEL }}" || true
+
+            if [ -s review_output.md ]; then
+              echo "review_output.md produced on attempt $attempt"
+              break
+            fi
+
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::error::opencode did not produce a non-empty review_output.md after $MAX_ATTEMPTS attempt(s). opencode silently ended the run without an error (a known failure mode - typically an unrecovered upstream/Bifrost stream error) - failing this step explicitly instead of letting the job report green with no review posted."
+              exit 1
+            fi
+
+            echo "review_output.md missing/empty on attempt $attempt; retrying..."
+            attempt=$((attempt + 1))
+          done
 
       - name: Post review as sticky PR comment
         if: always()
