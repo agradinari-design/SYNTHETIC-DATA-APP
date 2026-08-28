@@ -1,0 +1,8 @@
+google-genai>=0.1.1
+google-cloud-aiplatform
+streamlit
+pandas
+psycopg2-binary
+sqlalchemy
+langfuse
+sqlparse
