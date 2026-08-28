@@ -1,142 +1,86 @@
-# Module 1 — Prompt Engineering Capstone
+# Grid University — Gen AI Training Program
 
-> Grid University · Gen AI Training Program
-> Modules covered: Prompt Engineering, LLM APIs, Guardrails, Basic Observability, Production best practices.
+Welcome! This repository is the submission hub for the **Generative AI** training program at Grid University.
 
-This branch is the **target** of your submission Pull Request for Module 1. Branch off this branch, build your project, then open a PR back into `prompt`. Two AI reviewers — Claude and Gemini — run in parallel on every PR and each posts a detailed sticky comment with the verdict, phase-by-phase analysis, and concrete action items. For the full submission flow, see the [`main` branch README](https://github.com/griddynamics/gridu-genai/blob/main/README.md).
+Each course module has its own dedicated branch. You submit your capstone project by opening a **Pull Request** from your personal working branch into the matching module branch. An AI reviewer (Claude) runs on every PR and posts a detailed sticky comment with verdict, per-phase analysis, and concrete action items.
 
-> ⚠️ **Heads-up:** the Pull Request you will open targets this branch but **will never be merged.** The `prompt` branch is an evaluation target only. Your professor reads your code and the AI reviews on the PR thread, then closes the PR. No code from any submission ever lands on `prompt`.
-
----
-
-## Overview
-
-You will implement a conversational AI application with two primary functionalities: **synthetic data generation** and **natural-language data querying** ("Talk to your data"). The work is broken down into phases — the first two are mandatory, the third is optional.
-
-By the end of the project, you must deliver a working UI and present both the results and the source code to your professor.
+> ⚠️ **Pull Requests are evaluation-only.** The module branches (`prompt`, `rag`, `agentic`, `basic-prompt`) exist solely as targets for review. **They are never merged.** Your professor reads your code and the AI review on the PR thread, then closes the PR. No code from a submission ever lands on a module branch.
 
 ---
 
-## Technical requirements
+## Course modules
 
-| # | Requirement |
-|---|---|
-| 1 | **LLM:** Gemini 2.0 Flash or newer. Use streaming, function calling, and JSON / structured output where appropriate. |
-| 2 | **SDK:** Google GenAI SDK with **Vertex AI auth** through a GCP project. No plain API keys. |
-| 3 | **UI:** Streamlit *or* Gradio. |
-| 4 | **DB:** PostgreSQL. |
-| 5 | **Containerisation:** Docker (`Dockerfile` and/or `docker-compose.yml`). |
-| 6 | **Observability:** Langfuse (tracing wired into the running app). |
+| Module | Target branch | What you build |
+|---|---|---|
+| **Prompt Engineering** | [`prompt`](https://github.com/griddynamics/gridu-genai/tree/prompt) | A conversational app with synthetic data generation + natural-language SQL querying. |
+| **Prompt Engineering Basic** | [`basic-prompt`](https://github.com/griddynamics/gridu-genai/tree/basic-prompt) | A standalone *Prompt Engineering & AI Applications [Basic]* capstone. |
+| **Retrieval-Augmented Generation** | [`rag`](https://github.com/griddynamics/gridu-genai/tree/rag) | A multimodal RAG system over the IFC Annual Report 2024 PDF (text, tables, images). |
+| **Agentic Systems** | [`agentic`](https://github.com/griddynamics/gridu-genai/tree/agentic) | An autonomous research agent built with ADK — plan, execute, critique, refine. |
 
----
+> ⚠️ **`prompt` and `basic-prompt` are SEPARATE modules — not variants of each other.** They run as distinct courses, with their own cohorts, their own assignment specifications, and their own reviewer expectations. Submit to the module branch that matches the course you are enrolled in, and read **only that branch's `README.md`** for your spec. Confusing the two is the most common source of mis-targeted submissions on this repo.
 
-## Phase 1 — Synthetic Data Generation
-
-### Functional requirements
-
-- The system generates consistent, valid data for the provided DDL schema (up to 5–7 tables): correct types, null handling, date/time formats, primary and foreign keys honoured.
-- The user can iteratively modify the generated data through textual feedback ("make 30% of `column_a` nulls", "replace value X with Y in all tables", etc.).
-- Generated data is downloadable as **CSV / ZIP** *and* persisted so the *Talk to your data* tab can use it.
-
-### UI requirements
-
-- Sidebar with two main tabs: **Data Generation** and **Talk to your data**.
-- *Data Generation* tab must include:
-  - DDL upload (`.sql`, `.txt`, or `.ddl`).
-  - Prompt input (text box for instructions).
-  - Generation parameters including **temperature**.
-  - **Generate** button to trigger the run.
-  - Per-table preview of generated data.
-  - Per-table edit-by-prompt with a **Submit** button to apply changes.
-
-### Sample conversational flow
-
-```
-User uploads library_mgmt.ddl with instructions:
-  - generate ~20 records per table
-  - 20% of dates in table C should be null
-  - dates between Nov 2023 and June 2025
-
-System: [shows generated tables]
-User: Make 30% nulls in column A
-System: [updates the data]
-User: Replace value A with value B in all tables
-System: [updates the data]
-User: Looks good, save it
-System: [link to download as CSV/ZIP]
-```
-
----
-
-## Phase 2 — Chat with Your Data
-
-The system must provide a conversational interface to query the generated data in natural language.
-
-- Conversational UI with text input, conversation history, and **streamed** responses.
-- Automatic SQL generation **and** execution against the dataset:
-  - Support joins and aggregation functions.
-  - Display both the **source SQL** and the **tabular result**.
-  - *(Optional)* allow queries to be edited from the UI.
-- Data visualisations using **Seaborn** (or an equivalent plotting library), rendered inside the conversational flow.
-
-### Guardrails (basic)
-
-- Detect prompt-injection / jailbreak attempts.
-- Keep the assistant on topic.
-- *(Optional, schema-dependent)* PII tokenisation (masking) for user queries.
-
-### Observability
-
-- Set up Langfuse and wire it to the application to trace the chat pipeline.
-- *(Optional)* Alerts for jailbreak attempts and online evals.
-
-### Sample conversational flow
-
-```
-User:   What are the top-performing departments in Q3 2025 based on profits?
-System: [SQL query as a code block]
-        [tabular result]
-User:   Add info about how many sales each department made.
-System: [updated SQL query + tabular result]
-User:   Make a bar plot (short department name, total sales per month).
-System: [bar plot image]
-User:   All bars the same colour, use blue.
-System: [updated bar plot]
-```
-
----
-
-## Phase 3 — Advanced Text-to-SQL *(Optional)*
-
-Improve "Talk to your data" accuracy on larger datasets with vector-based example retrieval and dynamic schema selection.
-
-- Add `text query → SQL query` examples and pull relevant ones from a vector store at generation time.
-- Dynamically choose which table schemas to load into the LLM context.
-
-> Anything marked *(Optional)* in this spec will **not** lower your grade. Skip it without penalty.
-
----
-
-## Provided resources
-
-This branch ships with three sample DDL schemas under `resources/schemas/`:
-
-- `library_mgmt.ddl` — small library management database.
-- `restaurants.ddl` — restaurant ordering domain.
-- `company_employee.ddl` — HR / payroll domain.
-
-You may use any of these (or your own) for testing. A reference UI mock-up is provided at `resources/images/ui_sample.png`.
+Each module branch contains a `README.md` with the assignment spec and a `resources/` directory with course-provided materials. The branch is otherwise empty — your PR adds your full project on top of that blank slate, so the reviewer sees exactly what you built and nothing else.
 
 ---
 
 ## How to submit
 
-1. Branch off `prompt`: `git checkout prompt && git checkout -b <user-ldap-id>/prompt-submission`.
-2. Build your project on that branch. The reviewer will read **everything you commit** (excluding `.github/`, caches, and binary assets).
-3. Open a Pull Request targeting the `prompt` branch.
-   - **PR title must follow the convention `First Last - Module Name`** (e.g. `Jan Kowalski - Prompt Engineering`). This is how your professor identifies whose submission they are reading.
-4. Two AI reviewers (Claude + Gemini) run automatically and each posts a sticky PR comment with verdict, technical-requirements table, per-phase analysis, and action items.
-5. Push more commits to re-trigger the reviewers. Each bot updates its existing comment in place.
-6. When you reach `passed` / `passed_with_notes` on both, request final review from your professor.
+1. **Fork** this repository (or create a working branch directly if you have push access).
+2. Create a branch off the module you are working on. For example, for the RAG capstone:
+   ```bash
+   git checkout rag
+   git checkout -b <user-ldap-id>/rag-submission
+   ```
+3. Implement your solution on that branch. Commit and push as often as you like.
+4. When you are ready for review, open a **Pull Request** targeting the module branch (`prompt`, `basic-prompt`, `rag`, or `agentic`).
+   - **PR title must follow the convention `First Last - Module Name`** (e.g. `Jan Kowalski - Prompt Engineering`, `Maria Wojcik - Prompt Engineering Basic`, `Anna Nowak - RAG`, `Piotr Wisniewski - Agentic Systems`). This is how your professor identifies whose submission they are reading.
+5. The AI reviewer (Claude, `claude-opus-4-8`) runs automatically and posts a sticky comment with:
+   - an overall verdict (`failed` / `passed_with_notes` / `passed`),
+   - a technical-requirements table,
+   - a per-phase analysis with concrete file references,
+   - a list of action items so you know exactly what to fix.
+6. If the verdict is `failed`, push more commits — the bot re-runs on every push and updates its comment in place. Each update is tagged with a `Last updated …` timestamp at the top of the comment.
+7. Once you reach `passed` or `passed_with_notes`, your professor is automatically assigned to the PR and notified. They review the PR and close it (without merging — see the warning at the top).
 
-Good luck — and have fun.
+---
+
+## What the AI reviewer checks
+
+The reviewer reads:
+
+- the **assignment specification** — the `README.md` of the module branch you are PR-ing into (it is exactly what you were given, no hidden requirements);
+- your **code** — every file you contributed, except `.github/` and `resources/`.
+
+It then walks through every mandatory phase of the spec and verifies, against the actual code:
+
+- Are all explicitly required technologies actually imported and wired into the running app? (Not just listed in `requirements.txt`.)
+- Are all mandatory phases delivered end-to-end? Can the capability be traced from an entrypoint?
+- For each gap: does the student substitute an equivalent tool (acceptable, noted) or is the role omitted entirely (failure)?
+
+The reviewer cites file paths and line numbers when calling something out. It will not penalize you for items the spec labels `(Optional)` or `(optional for interns)`.
+
+---
+
+## Repository layout
+
+```text
+main                              ← this branch: workflow + docs
+├── README.md
+└── .github/
+    ├── workflows/
+    │   ├── ai-review.yml         ← Claude reviewer
+    │   ├── merge-block.yml       ← always-fail check that disables Merge
+    │   └── cleanup-branch.yml    ← deletes head branch on PR close
+    └── SETUP.md                  ← professor setup notes
+
+prompt                            ← orphan branch: Module 1 spec + resources
+basic-prompt                      ← orphan branch: Module 1 (Basic) spec + resources
+rag                               ← orphan branch: Module 2 spec + resources
+agentic                           ← orphan branch: Module 3 spec
+```
+
+---
+
+## For professors
+
+See [`.github/SETUP.md`](https://github.com/griddynamics/gridu-genai/blob/main/.github/SETUP.md) for setup steps, the no-merge policy, branch protection, and notes on reusing this infrastructure for other courses.
