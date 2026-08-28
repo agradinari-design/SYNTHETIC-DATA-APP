@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from generator import generate_table_data, generate_sql_query
+from SYNTHETIC_DATA_APP.generator import generate_table_data, generate_sql_query
 import db
 import schema_parser
 
