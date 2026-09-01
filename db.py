@@ -19,11 +19,22 @@ def execute_ddl(ddl_script: str):
     try:
         engine = get_db_engine()
         with engine.connect() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
             conn.execute(text(ddl_script))
             conn.commit()
         return (True, "DDL executed successfully.")
     except Exception as e:
         return (False, f"DDL Execution Error: {str(e)}")
+
+def clear_database():
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+            conn.commit()
+        return (True, "Database reset successfully.")
+    except Exception as e:
+        return (False, f"Error dropping schema: {str(e)}")
 
 def save_df_to_postgres(df: pd.DataFrame, table_name: str):
     try:
@@ -34,7 +45,6 @@ def save_df_to_postgres(df: pd.DataFrame, table_name: str):
         return (False, f"Data insertion error for table '{table_name}': {str(e)}")
 
 def run_query(sql_query: str) -> pd.DataFrame:
-    """Executes a SELECT SQL query against PostgreSQL and returns results as a DataFrame."""
     engine = get_db_engine()
     with engine.connect() as conn:
         return pd.read_sql_query(text(sql_query), conn)

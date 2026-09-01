@@ -1,5 +1,14 @@
+# Sensitive GCP Credentials - NEVER PUSH TO GITHUB
+application_default_credentials.json
 credentials.json
 *.json
-__pycache__/
+!.gitignore
+
+# Environment & Python Cache
 .env
+venv/
+__pycache__/
+*.pyc
+
+# Docker & OS artifacts
 .DS_Store

@@ -2,23 +2,28 @@ import re
 import sqlparse
 
 def clean_ddl_for_postgres(sql_script: str) -> str:
-    """Sanitizes SQL DDL for PostgreSQL compatibility."""
     if not sql_script:
         return ""
 
-    # 1. Strip MySQL ENUM(...) data types and replace with VARCHAR(255)
-    cleaned = re.sub(r'(?i)\bENUM\s*\([^)]*\)', 'VARCHAR(255)', sql_script)
+    cleaned = sql_script
 
-    # 2. Remove MySQL AUTO_INCREMENT keywords
+    # Convert MySQL DATETIME to PostgreSQL TIMESTAMP and ENUM to VARCHAR
+    cleaned = re.sub(r'(?i)\bDATETIME\b', 'TIMESTAMP', cleaned)
+    cleaned = re.sub(r'(?i)\bENUM\s*\([^)]+\)', 'VARCHAR(255)', cleaned)
+
+    # Remove MySQL AUTO_INCREMENT, Engine, Charset, and Collate specifications
     cleaned = re.sub(r'(?i)\bAUTO_INCREMENT\b', '', cleaned)
-
-    # 3. Remove MySQL Engine, Charset, and Collate specifications
     cleaned = re.sub(r'(?i)ENGINE\s*=\s*\w+', '', cleaned)
     cleaned = re.sub(r'(?i)(DEFAULT\s+)?CHARACTER\s+SET\s*=\s*\w+', '', cleaned)
     cleaned = re.sub(r'(?i)COLLATE\s*=\s*\w+', '', cleaned)
-
-    # 4. Remove MySQL backticks
     cleaned = cleaned.replace("`", "")
+
+    # Inject IF NOT EXISTS into CREATE TABLE statements
+    cleaned = re.sub(
+        r'(?i)CREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS\s+)',
+        'CREATE TABLE IF NOT EXISTS ',
+        cleaned
+    )
 
     formatted_sql = sqlparse.format(
         cleaned,
@@ -29,7 +34,6 @@ def clean_ddl_for_postgres(sql_script: str) -> str:
     return formatted_sql.strip()
 
 def extract_table_names(sql_script: str) -> list[str]:
-    """Extracts table names from DDL script."""
     tables = []
     pattern = r'(?i)CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([`"\w]+)'
     matches = re.findall(pattern, sql_script)
@@ -39,9 +43,8 @@ def extract_table_names(sql_script: str) -> list[str]:
             tables.append(table_name)
     return tables
 
-def extract_schema_summary(sql_script: str) -> dict:
-    """Returns a full schema summary including clean string DDL."""
-    cleaned = clean_ddl_for_postgres(sql_script)
+def parse_ddl_file(file_content: str) -> dict:
+    cleaned = clean_ddl_for_postgres(file_content)
     tables = extract_table_names(cleaned)
     return {
         "cleaned_ddl": cleaned,
@@ -49,6 +52,3 @@ def extract_schema_summary(sql_script: str) -> dict:
         "tables_str": ", ".join(tables),
         "table_count": len(tables)
     }
-
-def parse_ddl_file(file_content: str) -> dict:
-    return extract_schema_summary(file_content)
